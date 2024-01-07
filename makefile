@@ -1,4 +1,4 @@
-CC = g++
+CC = clang++
 CXXFLAGS = -g -Wall -std=c++20
 
 TARGET_EXEC := FunDB

@@ -1,0 +1,59 @@
+[
+  {
+    "arguments": [
+      "/usr/bin/c++",
+      "-g",
+      "-Wall",
+      "-std=c++20",
+      "-I./src",
+      "-I./src/util",
+      "-I./src/storage",
+      "-I./src/thread",
+      "-c",
+      "-o",
+      "build/./src/storage/format.cpp.o",
+      "src/storage/format.cpp"
+    ],
+    "directory": "/Users/bytedance/repos/funDB",
+    "file": "/Users/bytedance/repos/funDB/src/storage/format.cpp",
+    "output": "/Users/bytedance/repos/funDB/build/src/storage/format.cpp.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/c++",
+      "-g",
+      "-Wall",
+      "-std=c++20",
+      "-I./src",
+      "-I./src/util",
+      "-I./src/storage",
+      "-I./src/thread",
+      "-c",
+      "-o",
+      "build/./src/thread/thread_pool.cpp.o",
+      "src/thread/thread_pool.cpp"
+    ],
+    "directory": "/Users/bytedance/repos/funDB",
+    "file": "/Users/bytedance/repos/funDB/src/thread/thread_pool.cpp",
+    "output": "/Users/bytedance/repos/funDB/build/src/thread/thread_pool.cpp.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/c++",
+      "-g",
+      "-Wall",
+      "-std=c++20",
+      "-I./src",
+      "-I./src/util",
+      "-I./src/storage",
+      "-I./src/thread",
+      "-c",
+      "-o",
+      "build/./src/main.cpp.o",
+      "src/main.cpp"
+    ],
+    "directory": "/Users/bytedance/repos/funDB",
+    "file": "/Users/bytedance/repos/funDB/src/main.cpp",
+    "output": "/Users/bytedance/repos/funDB/build/src/main.cpp.o"
+  }
+]
