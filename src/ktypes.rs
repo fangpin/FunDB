@@ -65,7 +65,7 @@ fn u64_from_bytes(bytes: &[u8]) -> u64 {
 
 impl LookupKey {
     pub fn new(key: &[u8], seq: u64, v_type: ValueType) -> Self {
-        let mut tag: u64 = (seq as u64) << 1 | (v_type as u64);
+        let mut tag: u64 = (seq as u64) << 8 | (v_type as u64);
 
         let mut vec = Vec::with_capacity(U32_SIZE + key.len() + U64_SIZE);
         vec.extend_from_slice(u32_to_bytes(key.len() as u32).as_slice());

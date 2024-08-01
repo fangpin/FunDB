@@ -38,12 +38,54 @@ impl Cmp for DefaultCmp{
     }
 
     fn find_shortest_sep(&self, from: &[u8], to: &[u8]) -> Vec<u8> {
-        let min_len = if from.len() < to.len() { from.len() } else { to.len() };
-        let mut ret: Vec<_> = from.iter().zip(to.iter()).take_while(|(a, b)| { **a == **b}).map(|(a, _)| *a).collect();
-        if ret.len() <= min_len && from[ret.len()] < 0xff && from[ret.len()] + 1 < to[ret.len()] { 
-            ret.push(from[ret.len()] + 1)
+        if from == to {
+            return from.to_vec();
         }
-        ret 
+        let min = if from.len() < to.len() { from.len() } else { to.len() };
+        let mut diff_at = 0;
+
+        while diff_at < min && from[diff_at] == to[diff_at] {
+            diff_at += 1;
+        }
+
+        // First, try to find a short separator. If that fails, try a backup mechanism below.
+        while diff_at < min {
+            let diff = from[diff_at];
+            if diff < 0xff && diff + 1 < to[diff_at] {
+                let mut sep = Vec::from(&from[0..diff_at + 1]);
+                sep[diff_at] += 1;
+                assert!(self.cmp(&sep, to) == Ordering::Less);
+                return sep;
+            }
+
+            diff_at += 1;
+        }
+
+        let mut sep = Vec::with_capacity(from.len() + 1);
+        sep.extend_from_slice(from);
+        // Try increasing a and check if it's still smaller than b. First find the last byte
+        // smaller than 0xff, and then increment that byte. Only if the separator is lesser than b,
+        // return it.
+        let mut i = from.len() - 1;
+        while i > 0 && sep[i] == 0xff {
+            i -= 1;
+        }
+        if sep[i] < 0xff {
+            sep[i] += 1;
+            if self.cmp(&sep, to) == Ordering::Less {
+                return sep;
+            } else {
+                sep[i] -= 1;
+            }
+        }
+
+        // Backup case: either `a` is full of 0xff, or all different places are less than 2
+        // characters apart.
+        // The result is not necessarily short, but a good separator: e.g., "abc" vs "abd" ->
+        // "abc\0", which is greater than abc and lesser than abd.
+        // Append a 0 byte; by making it longer than a, it will compare greater to it.
+        sep.extend_from_slice(&[0]);
+        sep
     }
 }
 
@@ -83,8 +125,8 @@ impl Cmp for InternalKeyCmp {
 }
 
 /// mem key comparator
-struct MemCmp(pub Rc<dyn Cmp>);
-impl Cmp for MemCmp {
+struct MemKeyCmp(pub Rc<dyn Cmp>);
+impl Cmp for MemKeyCmp {
     fn cmp(&self, a: &[u8], b: &[u8]) -> Ordering {
         ktypes::cmp_mem_key(self.0.as_ref(), a, b)
     }
@@ -99,5 +141,141 @@ impl Cmp for MemCmp {
 
     fn id(&self) -> &'static str {
         self.0.id()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ktypes::LookupKey;
+
+    #[test]
+    fn test_cmp_defaultcmp_shortest_sep() {
+        assert_eq!(
+            DefaultCmp.find_shortest_sep("abcd".as_bytes(), "abcf".as_bytes()),
+            "abce".as_bytes()
+        );
+        assert_eq!(
+            DefaultCmp.find_shortest_sep("abc".as_bytes(), "acd".as_bytes()),
+            "abd".as_bytes()
+        );
+        assert_eq!(
+            DefaultCmp.find_shortest_sep("abcdefghi".as_bytes(), "abcffghi".as_bytes()),
+            "abce".as_bytes()
+        );
+        assert_eq!(
+            DefaultCmp.find_shortest_sep("a".as_bytes(), "a".as_bytes()),
+            "a".as_bytes()
+        );
+        assert_eq!(
+            DefaultCmp.find_shortest_sep("a".as_bytes(), "b".as_bytes()),
+            "a\0".as_bytes()
+        );
+        assert_eq!(
+            DefaultCmp.find_shortest_sep("abc".as_bytes(), "zzz".as_bytes()),
+            "b".as_bytes()
+        );
+        assert_eq!(
+            DefaultCmp.find_shortest_sep("yyy".as_bytes(), "z".as_bytes()),
+            "yyz".as_bytes()
+        );
+        assert_eq!(
+            DefaultCmp.find_shortest_sep("".as_bytes(), "".as_bytes()),
+            "".as_bytes()
+        );
+    }
+
+    #[test]
+    fn test_cmp_defaultcmp_short_succ() {
+        assert_eq!(
+            DefaultCmp.find_short_succ("abcd".as_bytes()),
+            "b".as_bytes()
+        );
+        assert_eq!(
+            DefaultCmp.find_short_succ("zzzz".as_bytes()),
+            "{".as_bytes()
+        );
+        assert_eq!(DefaultCmp.find_short_succ(&[]), &[0xff]);
+        assert_eq!(
+            DefaultCmp.find_short_succ(&[0xff, 0xff, 0xff]),
+            &[0xff, 0xff, 0xff, 0xff]
+        );
+    }
+
+    #[test]
+    fn test_cmp_internalkeycmp_shortest_sep() {
+        let cmp = InternalKeyCmp(Rc::new(DefaultCmp));
+        assert_eq!(
+            cmp.find_shortest_sep(
+                LookupKey::new("abcd".as_bytes(), 1, ktypes::ValueType::TypeValue).internal_key(),
+                LookupKey::new("abcf".as_bytes(), 2, ktypes::ValueType::TypeValue).internal_key()
+            ),
+            LookupKey::new("abce".as_bytes(), 1, ktypes::ValueType::TypeValue).internal_key()
+        );
+        assert_eq!(
+            cmp.find_shortest_sep(
+                LookupKey::new("abcd".as_bytes(), 1, ktypes::ValueType::TypeValue).internal_key(),
+                LookupKey::new("abce".as_bytes(), 2, ktypes::ValueType::TypeValue).internal_key()
+            ),
+            LookupKey::new("abcd\0".as_bytes(), 1, ktypes::ValueType::TypeValue).internal_key()
+        );
+        assert_eq!(
+            cmp.find_shortest_sep(
+                LookupKey::new("abc".as_bytes(), 1, ktypes::ValueType::TypeValue).internal_key(),
+                LookupKey::new("zzz".as_bytes(), 2, ktypes::ValueType::TypeValue).internal_key()
+            ),
+            LookupKey::new("b".as_bytes(), types::MAX_SEQUENCE_NUMBER, ktypes::ValueType::TypeValue).internal_key()
+        );
+        assert_eq!(
+            cmp.find_shortest_sep(
+                LookupKey::new("abc".as_bytes(), 1, ktypes::ValueType::TypeValue).internal_key(),
+                LookupKey::new("acd".as_bytes(), 2, ktypes::ValueType::TypeValue).internal_key()
+            ),
+            LookupKey::new("abd".as_bytes(), 1, ktypes::ValueType::TypeValue).internal_key()
+        );
+        assert_eq!(
+            cmp.find_shortest_sep(
+                LookupKey::new("abc".as_bytes(), 1, ktypes::ValueType::TypeValue).internal_key(),
+                LookupKey::new("abe".as_bytes(), 2, ktypes::ValueType::TypeValue).internal_key()
+            ),
+            LookupKey::new("abd".as_bytes(), 1, ktypes::ValueType::TypeValue).internal_key()
+        );
+        assert_eq!(
+            cmp.find_shortest_sep(
+                LookupKey::new("".as_bytes(), 1, ktypes::ValueType::TypeValue).internal_key(),
+                LookupKey::new("".as_bytes(), 2, ktypes::ValueType::TypeValue).internal_key()
+            ),
+            LookupKey::new("".as_bytes(), 1, ktypes::ValueType::TypeValue).internal_key()
+        );
+        assert_eq!(
+            cmp.find_shortest_sep(
+                LookupKey::new("abc".as_bytes(), 2, ktypes::ValueType::TypeValue).internal_key(),
+                LookupKey::new("abc".as_bytes(), 2, ktypes::ValueType::TypeValue).internal_key()
+            ),
+            LookupKey::new("abc".as_bytes(), 2, ktypes::ValueType::TypeValue).internal_key()
+        );
+    }
+
+    #[test]
+    fn test_cmp_internalkeycmp() {
+        let cmp = InternalKeyCmp(Rc::new(DefaultCmp));
+        // a < b < c
+        let a = LookupKey::new("abc".as_bytes(), 2, ktypes::ValueType::TypeValue).internal_key().to_vec();
+        let b = LookupKey::new("abc".as_bytes(), 1, ktypes::ValueType::TypeValue).internal_key().to_vec();
+        let c = LookupKey::new("abd".as_bytes(), 3, ktypes::ValueType::TypeValue).internal_key().to_vec();
+        let d = "xyy".as_bytes();
+        let e = "xyz".as_bytes();
+
+        assert_eq!(Ordering::Less, cmp.cmp(&a, &b));
+        assert_eq!(Ordering::Equal, cmp.cmp(&a, &a));
+        assert_eq!(Ordering::Greater, cmp.cmp(&b, &a));
+        assert_eq!(Ordering::Less, cmp.cmp(&a, &c));
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_cmp_memtablekeycmp_panics() {
+        let cmp = MemKeyCmp(Rc::new(DefaultCmp));
+        cmp.cmp(&[1, 2, 3], &[4, 5, 6]);
     }
 }
