@@ -19,7 +19,7 @@ pub type InternalKey<'a> = &'a [u8];
 /// [key_len + InternalKey + value_len + value]
 pub type MemKey<'a> = &'a [u8];
 
-/// [key_len + InteralKey]
+/// [key_len + InteralKey] (first part of mem key)
 pub struct LookupKey {
     key: Vec<u8>,
 }
