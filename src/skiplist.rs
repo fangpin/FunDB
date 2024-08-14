@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{cmp::Ordering, rc::Rc};
 use rand::{rngs::StdRng, RngCore};
 
 use crate::cmp::Cmp;
@@ -39,5 +39,82 @@ impl InnerSkipList {
             height += 1;
         }
         height
+    }
+
+    fn get_greater_or_equal<'a>(&'a self, key: &[u8]) -> Option<&'a Node> {
+        let mut cur = self.head.as_ref() as *const Node;
+        let mut level = self.head.skips.len() - 1;
+        loop {
+            unsafe {
+                if let Some(next) = (*cur).skips[level] {
+                    match self.cmp.cmp((*next).key.as_slice(), key) {
+                        Ordering::Equal => return Some(&(*next)),
+                        Ordering::Less => {
+                            cur = next;
+                            continue;
+                        }
+                        Ordering::Greater => {
+                            if level == 0 {
+                                return Some(&(*next));
+                            }
+                        }
+                    }
+                }
+            }
+            if level == 0 { 
+                break;
+            }
+            level -= 1;
+        }
+        unsafe {
+            if cur.is_null() || cur == self.head.as_ref() {
+                None
+            } else if self.cmp.cmp((*cur).key.as_slice(), key) == Ordering::Less {
+                None
+            } else {
+                Some(&(*cur))
+            }
+        }
+    }
+
+    /// return if the skiplist contains the key
+    fn contains(&self, key: &[u8]) -> bool {
+        if let Some(n) = self.get_greater_or_equal(key) {
+            self.cmp.cmp(n.key.as_slice(), key) == Ordering::Equal
+        } else {
+            false
+        }
+    }
+
+    /// get the last smaller node
+    fn get_last_smaller<'a>(&'a self, key: &[u8]) -> Option<&'a Node> {
+        let mut cur = self.head.as_ref() as *const Node;
+        let mut level = self.head.skips.len() - 1;
+
+        loop {
+            unsafe {
+                if let Some(next) = (*cur).skips[level] {
+                    if self.cmp.cmp((*next).key.as_slice(), key) == Ordering::Less {
+                        cur = next;
+                        continue;
+                    }
+                }
+                if level == 0 {
+                    break;
+                }
+                level -= 1;
+            }
+        }
+
+        unsafe {
+            if cur.is_null() || cur == self.head.as_ref() {
+                None
+            } else if self.cmp.cmp((*cur).key.as_slice(), key) != Ordering::Less {
+                None
+            }
+            else {
+                Some(&(*cur))
+            }
+        }
     }
 }
