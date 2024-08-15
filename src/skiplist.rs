@@ -1,5 +1,5 @@
-use std::{cmp::Ordering, rc::Rc};
-use rand::{rngs::StdRng, RngCore};
+use std::{cell::RefCell, cmp::Ordering, iter::Skip, mem::{self, size_of}, rc::Rc};
+use rand::{rngs::StdRng, RngCore, SeedableRng};
 
 use crate::cmp::Cmp;
 
@@ -117,4 +117,112 @@ impl InnerSkipList {
             }
         }
     }
+
+    fn insert(&mut self, key: &[u8], val: &[u8]) {
+        let new_height = self.random_height();
+        let mut level = MAX_HEIGHT - 1;
+        let mut current = self.head.as_mut() as *mut Node;
+        let mut prevs = vec![Some(current); new_height];
+
+        loop {
+            unsafe {
+                if let Some(next) = (*current).skips[level] {
+                    let ord =  self.cmp.cmp((*next).key.as_slice(), key);
+                    assert!(ord != Ordering::Equal);
+                    if ord == Ordering::Less {
+                        current = next;
+                        continue;
+                    } 
+                }
+            }
+            if level < new_height {
+                prevs[level] = Some(current);
+            }
+            if level == 0 {
+                break;
+            }
+            level -= 1;
+        }
+
+        let mut new_node = Box::new(Node {
+            key: key.to_vec(),
+            value: val.to_vec(),
+            next: None,
+            skips: vec![None; new_height],
+        });
+        for (i, prev) in prevs.iter().enumerate() {
+            unsafe {
+                if let Some(prev) = prev {
+                    new_node.skips[i] = (*(*prev)).skips[i];
+                    (*(*prev)).skips[i] = Some(new_node.as_mut() as *mut Node);
+                }
+            }
+        }
+
+        let added_mem = size_of::<Node>() + size_of::<Option<*mut Node>>() * new_node.skips.len() + new_node.key.len() + new_node.value.len();
+        self.approx_mem += added_mem;
+        self.len += 1;
+
+        unsafe {
+            new_node.next = (*current).next.take();
+            let _ = mem::replace(&mut(*current).next, Some(new_node));
+        }
+    }
+}
+
+pub struct SkipList {
+    skip_list: Rc<RefCell<InnerSkipList>>,
+}
+
+impl SkipList {
+    fn new(cmp: Rc<Box<dyn Cmp>>) -> SkipList {
+        SkipList {
+            skip_list: Rc::new(RefCell::new(InnerSkipList {
+                head: Box::new(Node {
+                    key: Vec::new(),
+                    value: Vec::new(),
+                    next: None,
+                    skips: vec![None; MAX_HEIGHT],
+                }),
+                len: 0,
+                approx_mem: size_of::<Self>() + MAX_HEIGHT * size_of::<Option<*mut Node>>(),
+                rand: StdRng::seed_from_u64(0xdeadbeaf),
+                cmp,
+            })),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.skip_list.borrow().len
+    }
+
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    pub fn approx_memory(&self) -> usize {
+        self.skip_list.borrow().approx_mem
+    }
+
+    pub fn contains(&self, key: &[u8]) -> bool {
+        self.skip_list.borrow().contains(key)
+    }
+
+    pub fn insert(&self, key: &[u8], val: &[u8]) {
+        assert!(!key.is_empty());
+        self.skip_list.borrow_mut().insert(key, val);
+    }
+
+    pub fn iter(&self) -> SkipListIter {
+        SkipListIter {
+            skip_list: self.skip_list.clone(),
+            cur: self.skip_list.borrow().head.as_ref() as *const Node,
+        }
+    }
+}
+
+pub struct SkipListIter {
+    skip_list: Rc<RefCell<InnerSkipList>>,
+    cur: *const Node,
 }
