@@ -1,12 +1,12 @@
-use std::{cell::RefCell, cmp::Ordering, iter::Skip, mem::{self, size_of}, rc::Rc};
+use std::{cell::RefCell, cmp::Ordering, iter::{self, Skip}, mem::{self, size_of}, ptr::null, rc::Rc};
 use rand::{rngs::StdRng, RngCore, SeedableRng};
 
-use crate::cmp::Cmp;
+use crate::{cmp::Cmp, iterator::DBIter};
 
 const MAX_HEIGHT: usize = 12;
 const BRANCHING_FACTOR: u32 = 4;
 
-/// the internal node for inter skip list
+/// the internal node for inner skip list
 struct Node {
     key: Vec<u8>,
     value: Vec<u8>,
@@ -225,4 +225,51 @@ impl SkipList {
 pub struct SkipListIter {
     skip_list: Rc<RefCell<InnerSkipList>>,
     cur: *const Node,
+}
+
+impl DBIter for SkipListIter {
+    fn next(&mut self) -> Option<(&[u8], &[u8])> {
+        unsafe {
+            if self.cur.is_null() {
+                return None
+            }
+            (*self.cur).next.as_ref().map(|n| {
+                self.cur = n.as_ref() as *const Node;
+                (n.key.as_slice(), n.value.as_slice())
+            })
+        }
+    }
+
+    fn peek(&self) -> Option<(&[u8], &[u8])> {
+        unsafe {
+            if self.cur.is_null() {
+                return None
+            }
+            (*self.cur).next.as_ref().map(|n| {
+                (n.key.as_slice(), n.value.as_slice())
+            })
+        }
+    }
+
+    fn seek(&mut self, key: &[u8]) {
+        if let Some(c) = self.skip_list.borrow().get_greater_or_equal(key).map(|n| n as *const Node) {
+            self.cur = c;
+        } else {
+            self.cur = null()
+        }
+    }
+
+    fn reset(&mut self) {
+        self.cur = self.skip_list.borrow().head.as_ref() as *const Node;
+    }
+
+    fn prev(&mut self) {
+        if !self.cur.is_null() {
+            if let Some((key, _)) = self.peek() {
+                if let Some(prev) = self.skip_list.borrow().get_last_smaller(key) {
+                    self.cur = prev as *const Node;
+                }
+            }
+        }
+    }
 }
