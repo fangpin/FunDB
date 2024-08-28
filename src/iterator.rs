@@ -14,5 +14,5 @@ pub trait DBIter {
     fn reset(&mut self);
 
     /// go to the previous position
-    fn prev(&mut self);
+    fn prev(&mut self) -> Option<(&[u8], &[u8])>;
 }

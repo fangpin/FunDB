@@ -21,7 +21,7 @@ pub trait Cmp {
 }
 
 /// default comparator
-struct DefaultCmp;
+pub struct DefaultCmp;
 impl Cmp for DefaultCmp{
     fn cmp(&self, a: &[u8], b: &[u8]) -> Ordering {
         a.cmp(b)

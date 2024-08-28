@@ -1,4 +1,4 @@
-use std::{cell::RefCell, cmp::Ordering, iter::{self, Skip}, mem::{self, size_of}, ptr::null, rc::Rc};
+use std::{cell::RefCell, cmp::Ordering, iter::{self, Skip}, mem::{self, size_of}, ptr::{self, null}, rc::Rc};
 use rand::{rngs::StdRng, RngCore, SeedableRng};
 
 use crate::{cmp::Cmp, iterator::DBIter};
@@ -255,7 +255,7 @@ impl DBIter for SkipListIter {
         if let Some(c) = self.skip_list.borrow().get_greater_or_equal(key).map(|n| n as *const Node) {
             self.cur = c;
         } else {
-            self.cur = null()
+            self.cur = ptr::null()
         }
     }
 
@@ -263,13 +263,58 @@ impl DBIter for SkipListIter {
         self.cur = self.skip_list.borrow().head.as_ref() as *const Node;
     }
 
-    fn prev(&mut self) {
-        if !self.cur.is_null() {
-            if let Some((key, _)) = self.peek() {
-                if let Some(prev) = self.skip_list.borrow().get_last_smaller(key) {
-                    self.cur = prev as *const Node;
+    fn prev(&mut self) -> Option<(&[u8], &[u8])> {
+        if self.cur.is_null() {
+            return None
+        } else {
+            unsafe {
+                let key = (*self.cur).key.as_slice();
+                if let Some(node) = self.skip_list.borrow().get_last_smaller(key) {
+                    self.cur = node as *const Node;
+                    return self.peek();
+                } else {
+                    return None
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::cmp;
+
+    use super::*;
+
+    fn make_skiplist() -> SkipList {
+        let mut skip_list = SkipList::new(Rc::new(Box::new(cmp::DefaultCmp)));
+        let keys = vec![
+            "aba", "abb", "abc", "abd", "abe", "abf", "abg", "abh", "abi", "abj", "abk", "abl",
+            "abm", "abn", "abo", "abp", "abq", "abr", "abs", "abt", "abu", "abv", "abw", "abx",
+            "aby", "abz",
+        ];
+        for k in keys {
+            skip_list.insert(k.as_bytes(), "def".as_bytes())
+        }
+        skip_list
+    }
+
+    #[test]
+    #[should_panic]
+    fn no_duplicate() {
+        let sl = make_skiplist();
+        sl.insert("aba".as_bytes(), "def".as_bytes());
+        sl.insert("abd".as_bytes(), "def".as_bytes());
+    }
+
+    #[test]
+    fn test_contains() {
+        let sl = make_skiplist();
+        assert!(sl.contains("aba".as_bytes()));
+        assert!(sl.contains("abb".as_bytes()));
+        assert!(sl.contains("abc".as_bytes()));
+        assert!(sl.contains("abd".as_bytes()));
+        assert!(sl.contains("abe".as_bytes()));
+        assert!(!sl.contains("def".as_bytes()));
     }
 }
