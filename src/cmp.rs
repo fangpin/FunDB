@@ -125,10 +125,10 @@ impl Cmp for InternalKeyCmp {
 }
 
 /// mem key comparator
-struct MemKeyCmp(pub Rc<dyn Cmp>);
+pub struct MemKeyCmp(pub Rc<Box<dyn Cmp>>);
 impl Cmp for MemKeyCmp {
     fn cmp(&self, a: &[u8], b: &[u8]) -> Ordering {
-        ktypes::cmp_mem_key(self.0.as_ref(), a, b)
+        ktypes::cmp_mem_key(self.0.as_ref().as_ref(), a, b)
     }
 
     fn find_short_succ(&self, a: &[u8]) -> Vec<u8> {
@@ -275,7 +275,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_cmp_memtablekeycmp_panics() {
-        let cmp = MemKeyCmp(Rc::new(DefaultCmp));
+        let cmp = MemKeyCmp(Rc::new(Box::new(DefaultCmp)));
         cmp.cmp(&[1, 2, 3], &[4, 5, 6]);
     }
 }

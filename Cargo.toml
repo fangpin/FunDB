@@ -5,4 +5,4 @@ edition = "2021"
 authors = ["Pin Fang <fpfangpin@hotmail.com>"]
 
 [dependencies]
-rand = "0.8.5"
+rand = "0.8"
